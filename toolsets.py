@@ -317,6 +317,15 @@ TOOLSETS = {
         "includes": []
     },
 
+    "customer_support": {
+        "description": "Customer-support query tools: search Feishu docs, GitHub Issues, HuggingFace Discussions (whitelist-gated)",
+        "tools": [
+            "cs_feishu_search_docs", "cs_feishu_read_doc",
+            "cs_github_search_issues", "cs_hf_search_discussions",
+        ],
+        "includes": []
+    },
+
     "spotify": {
         "description": "Native Spotify playback, search, playlist, album, and library tools",
         "tools": [

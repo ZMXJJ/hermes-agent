@@ -1,0 +1,16 @@
+#
+# Apple Silicon / arm64 override.
+#
+# Usage:
+#   HERMES_UID=$(id -u) HERMES_GID=$(id -g) \
+#     docker compose -f docker-compose.yml -f docker-compose.arm64.yml up -d --build
+#
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.arm64
+    image: hermes-agent:arm64-local
+
+  dashboard:
+    image: hermes-agent:arm64-local

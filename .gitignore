@@ -102,6 +102,14 @@ web/public/ds-assets/
 .release_notes.md
 mini-swe-agent/
 
+# Claude Code
+CLAUDE.md
+
+# planning-with-files
+task_plan.md
+findings.md
+progress.md
+
 # Nix
 .direnv/
 .nix-stamps/

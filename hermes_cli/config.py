@@ -1122,6 +1122,7 @@ DEFAULT_CONFIG = {
         # only controls how inbound user images are presented.
         "image_input_mode": "auto",
         "disabled_toolsets": [],
+        "group_disabled_toolsets": [],
 
         # Per-model reasoning effort overrides (spelling-tolerant).
         # Dict mapping model names (any reasonable spelling) to effort levels.
@@ -2692,6 +2693,23 @@ DEFAULT_CONFIG = {
         # false.  TUI has its own modal overlay (HERMES_TUI_NO_CONFIRM=1 to
         # opt out there).
         "destructive_slash_confirm": True,
+    },
+
+    # Customer-support toolset configuration (cs_feishu_*, cs_github_*, cs_hf_*)
+    "customer_support": {
+        "max_results": 5,
+        "max_content_chars": 12000,
+        "allow_recent_chat_context": False,
+        "feishu": {
+            "enabled": False,
+            "allowed_folder_tokens": [],
+        },
+        "github": {
+            "allowed_repos": [],
+        },
+        "huggingface": {
+            "allowed_repos": [],
+        },
     },
 
     # Permanently allowed dangerous command patterns (added via "always" approval)

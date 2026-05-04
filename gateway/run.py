@@ -31,6 +31,7 @@ import inspect
 import json
 import logging
 import os
+import random
 import re
 import shlex
 import site
@@ -6366,14 +6367,20 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         active = self._snapshot_running_agents()
         restart_source = self._restart_command_source if self._restart_requested else None
 
-        action = "restarting" if self._restart_requested else "shutting down"
-        hint = (
-            "Your current task will be interrupted. "
-            "Send any message after restart and I'll try to resume where you left off."
-            if self._restart_requested
-            else "Your current task will be interrupted."
-        )
-        msg = f"⚠️ Gateway {action} — {hint}"
+        _SHUTDOWN_QUIPS = [
+            "小钢炮走神了，一会儿再试试吧～",
+            "容我喝口水，马上回来 💧",
+            "信号不太好，稍等我重新连一下 📡",
+            "打个盹儿，别走开哦 😴",
+            "我去充个电，马上满血复活 🔋"
+        ]
+        _RESTART_QUIPS = [
+            "小钢炮重启中，一会儿就回来，刚才聊到哪儿了来着？",
+            "重新加载中～之前的问题我还记得，稍等哈",
+            "系统刷新一下，回来接着聊～",
+        ]
+        quips = _RESTART_QUIPS if self._restart_requested else _SHUTDOWN_QUIPS
+        msg = random.choice(quips)
 
         notified: set[tuple[str, str, Optional[str]]] = set()
         for session_key in active:
@@ -15109,7 +15116,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             from hermes_cli.tools_config import _get_platform_tools
             enabled_toolsets = sorted(_get_platform_tools(user_config, platform_key))
             agent_cfg = user_config.get("agent") or {}
-            disabled_toolsets = agent_cfg.get("disabled_toolsets") or None
+            disabled_toolsets = list(agent_cfg.get("disabled_toolsets") or [])
+            if source.chat_type in {"group", "forum"}:
+                disabled_toolsets.extend(agent_cfg.get("group_disabled_toolsets") or [])
+            disabled_toolsets = sorted(set(disabled_toolsets)) or None
 
             pr = self._provider_routing
             max_iterations = _current_max_iterations()
@@ -17735,6 +17745,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         ("compression", "target_ratio"),
         ("compression", "protect_last_n"),
         ("agent", "disabled_toolsets"),
+        ("agent", "group_disabled_toolsets"),
         ("memory", "provider"),
         ("checkpoints", "enabled"),
         ("checkpoints", "max_snapshots"),
@@ -19406,7 +19417,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         from hermes_cli.tools_config import _get_platform_tools
         enabled_toolsets = sorted(_get_platform_tools(user_config, platform_key))
         agent_cfg_local = user_config.get("agent") or {}
-        disabled_toolsets = agent_cfg_local.get("disabled_toolsets") or None
+        disabled_toolsets = list(agent_cfg_local.get("disabled_toolsets") or [])
+        if source.chat_type in {"group", "forum"}:
+            disabled_toolsets.extend(agent_cfg_local.get("group_disabled_toolsets") or [])
+        disabled_toolsets = sorted(set(disabled_toolsets)) or None
 
         display_config = user_config.get("display", {})
         if not isinstance(display_config, dict):
