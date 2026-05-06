@@ -3975,6 +3975,10 @@ class AIAgent:
         from agent.system_prompt import build_system_prompt
         return build_system_prompt(self, system_message=system_message)
 
+    # =========================================================================
+    # Pre/post-call guardrails (inspired by PR #1321 — @alireza78a)
+    # =========================================================================
+
     @staticmethod
     def _get_tool_call_id_static(tc) -> str:
         """Extract call ID from a tool_call entry (dict or object)."""
