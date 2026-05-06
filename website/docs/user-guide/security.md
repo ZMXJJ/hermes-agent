@@ -14,8 +14,8 @@ The security model has eight layers:
 
 1. **User authorization** — who can talk to the agent (allowlists, DM pairing)
 2. **Dangerous command approval** — human-in-the-loop for destructive operations
-3. **File write safety** — denylist and optional write sandbox for `write_file`/`patch`
-4. **Container isolation** — Docker/Singularity/Modal sandboxing with hardened settings
+3. **[Independent auditor](features/audit.md)** — an auxiliary LLM reviews every tool call, command, question, and reply before it is executed or delivered
+4. **File write safety** — denylist and optional write sandbox for `write_file`/`patch`
 5. **MCP credential filtering** — environment variable isolation for MCP subprocesses
 6. **Context file scanning** — prompt injection detection in project files
 7. **Cross-session isolation** — sessions cannot access each other's data or state; cron job storage paths are hardened against path traversal attacks

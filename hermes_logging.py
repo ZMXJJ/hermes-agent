@@ -361,6 +361,18 @@ def setup_logging(
             log_filter=_ComponentFilter(COMPONENT_PREFIXES["gui"]),
         )
 
+    # --- audit.log (INFO+, hermes_audit logger only) -------------------------
+    audit_logger = logging.getLogger("hermes_audit")
+    audit_logger.setLevel(logging.INFO)
+    _add_rotating_handler(
+        audit_logger,
+        log_dir / "audit.log",
+        level=logging.INFO,
+        max_bytes=max_bytes,
+        backup_count=backups,
+        formatter=RedactingFormatter(_LOG_FORMAT),
+    )
+
     if _logging_initialized and not force:
         return log_dir
 

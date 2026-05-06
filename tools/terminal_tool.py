@@ -2371,6 +2371,35 @@ def terminal_tool(
                     "status": "error",
                 }, ensure_ascii=False)
 
+        # Independent-auditor pre-exec check (defense-in-depth).
+        # The main agent loop already audits the tool call, but execute_code,
+        # subagents, and direct terminal_tool callers can sidestep that path.
+        # Audit again here using a per-LLM-call cache (keyed by command) so
+        # we don't pay twice for the same payload.
+        try:
+            from agent import audit as _audit
+            if _audit.is_enabled():
+                _verdict = _audit.audit_command(
+                    command=command,
+                    env_type=env_type,
+                    workdir=workdir or "",
+                    tool_call_id="",  # cache by command hash
+                    session_id=os.getenv("HERMES_SESSION_KEY", "") or "",
+                )
+                if _verdict.blocked:
+                    return json.dumps({
+                        "output": "",
+                        "exit_code": -1,
+                        "error": _audit.get_block_message(_verdict),
+                        "status": "blocked_by_audit",
+                    }, ensure_ascii=False)
+        except Exception:
+            # Audit failures must never crash the terminal tool — the
+            # module's own failure_mode setting governs whether the call
+            # is blocked or allowed when the auditor itself errors.
+            pass
+>>>>>>> a15e7d448 (feat(audit): implement independent auditor for enhanced safety and compliance)
+
         # Pre-exec security checks (tirith + dangerous command detection)
         # Skip check if force=True (user has confirmed they want to run it)
         approval_note = None

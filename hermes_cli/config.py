@@ -1807,8 +1807,71 @@ DEFAULT_CONFIG = {
             "extra_body": {},
             # NOTE: no reasoning_effort here by design — see moa_reference above.
         },
+        # Independent auditor model — reviews tool calls, terminal commands,
+        # clarify questions, and final replies before they reach the host
+        # system or end users.  Keep this on a separate cheap/fast model so
+        # the audit never depends on the same reasoning chain that produced
+        # the action being judged.  See ``audit`` section below for the
+        # behavioural switches that decide what the auditor sees.
+        "audit": {
+            "provider": "auto",
+            "model": "",
+            "base_url": "",
+            "api_key": "",
+            "timeout": 30,
+            "extra_body": {},
+        },
     },
-    
+
+    # Independent-auditor safety layer.
+    #
+    # When ``enabled`` is true, every LLM-initiated tool call, terminal
+    # command, clarify question, and final reply is sent to an independent
+    # auditor model (configured under ``auxiliary.audit``) for a JSON
+    # verdict before being executed or delivered.  The auditor judges
+    # actions against ``policy`` (free-form prose appended to its system
+    # prompt) and the per-channel switches below.
+    #
+    # All audit decisions — allow, block, and failures — are written to
+    # ``logs/audit.log`` (profile-aware) via the ``hermes_audit`` logger.
+    #
+    # ``failure_mode`` controls behaviour when the auditor itself errors,
+    # times out, or is missing a provider:
+    #   block — refuse the action and surface a generic block message
+    #           (default; safe for community deployments)
+    #   allow — let the action through but emit a WARNING audit-log entry
+    "audit": {
+        "enabled": False,
+        "audit_tools": True,
+        "audit_commands": True,
+        "audit_questions": True,
+        "audit_replies": True,
+        "failure_mode": "block",
+        # Free-form policy appended to the auditor system prompt.  Use
+        # this to encode brand/community rules (e.g. "never disclose
+        # internal pricing", "block political opinions").  Empty by
+        # default — the auditor falls back to a generic safety prompt.
+        "policy": "",
+        # Message returned to the user when the auditor blocks an action
+        # or final reply.  Kept generic so it doesn't leak the audit
+        # rationale to a community member.
+        "block_message": (
+            "This action was blocked by the safety auditor. "
+            "Please rephrase the request or contact an administrator."
+        ),
+        # Whether to also log allowed actions (alongside blocks).  Off by
+        # default to keep the audit log focused on incidents; flip to
+        # true if you need a full forensic trail.
+        "log_allowed": False,
+        # Conversation tail (in messages) included with the auditor
+        # request so it can judge actions in context.  Capped to keep
+        # audit calls cheap.
+        "context_tail_messages": 4,
+        # Per-call timeout for the auditor LLM in seconds.  Falls back to
+        # ``auxiliary.audit.timeout`` when unset (0 / null).
+        "request_timeout": 0,
+    },
+
     "display": {
         "compact": False,
         "personality": "",
@@ -2021,6 +2084,9 @@ DEFAULT_CONFIG = {
             # independently of scale.
             "unicode_cols": 0,
         },
+        # AI-generated content disclaimer appended to every final response.
+        # Set to a non-empty string to enable; empty string disables.
+        "ai_disclaimer": "",
     },
 
     # Web dashboard settings

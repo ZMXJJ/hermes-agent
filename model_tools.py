@@ -1210,20 +1210,50 @@ def handle_function_call(
         # fired it — do nothing here.
         if not skip_pre_tool_call_hook:
             block_message: Optional[str] = None
+
+            # Independent auditor (defense-in-depth): fires for callers that
+            # didn't go through run_agent._invoke_tool (e.g. RL agent_loop,
+            # direct execute_code → tool dispatch).  When run_agent has
+            # already audited the call it sets skip_pre_tool_call_hook=True
+            # and we never reach this block.
             try:
-                from hermes_cli.plugins import resolve_pre_tool_block
-                block_message = resolve_pre_tool_block(
-                    function_name,
-                    function_args,
-                    task_id=task_id or "",
-                    session_id=session_id or "",
-                    tool_call_id=tool_call_id or "",
-                    turn_id=turn_id or "",
-                    api_request_id=api_request_id or "",
-                    middleware_trace=list(_tool_middleware_trace),
-                )
+                from agent import audit as _audit
+                if _audit.is_enabled():
+                    _verdict = _audit.audit_tool_call(
+                        tool_name=function_name,
+                        tool_args=function_args,
+                        tool_call_id=tool_call_id or "",
+                        session_id=session_id or "",
+                    )
+                    if _verdict.blocked:
+                        block_message = _audit.get_block_message(_verdict)
+                if block_message is None:
+                    from hermes_cli.plugins import resolve_pre_tool_block
+                    block_message = resolve_pre_tool_block(
+                        function_name,
+                        function_args,
+                        task_id=task_id or "",
+                        session_id=session_id or "",
+                        tool_call_id=tool_call_id or "",
+                        turn_id=turn_id or "",
+                        api_request_id=api_request_id or "",
+                        middleware_trace=list(_tool_middleware_trace),
+                    )
             except Exception as _hook_err:
                 logger.debug("pre_tool_call hook error: %s", _hook_err)
+
+            if block_message is None:
+                try:
+                    from hermes_cli.plugins import get_pre_tool_call_block_message
+                    block_message = get_pre_tool_call_block_message(
+                        function_name,
+                        function_args,
+                        task_id=task_id or "",
+                        session_id=session_id or "",
+                        tool_call_id=tool_call_id or "",
+                    )
+                except Exception:
+                    pass
 
             if block_message is not None:
                 result = json.dumps({"error": block_message}, ensure_ascii=False)

@@ -20,6 +20,7 @@ Hermes Agent includes a rich set of capabilities that extend far beyond basic ch
 - **[Context Files](context-files.md)** — Hermes automatically discovers and loads project context files (`.hermes.md`, `AGENTS.md`, `CLAUDE.md`, `SOUL.md`, `.cursorrules`) that shape how it behaves in your project.
 - **[Context References](context-references.md)** — Type `@` followed by a reference to inject files, folders, git diffs, and URLs directly into your messages. Hermes expands the reference inline and appends the content automatically.
 - **[Checkpoints](../checkpoints-and-rollback.md)** — Hermes automatically snapshots your working directory before making file changes, giving you a safety net to roll back with `/rollback` if something goes wrong.
+- **[Independent Auditor](audit.md)** — An optional safety layer where an independent auxiliary LLM reviews every tool call, shell command, clarifying question, and final reply before execution or delivery. Designed for community deployments (Telegram groups, Discord servers) where the agent must not leak secrets, damage infrastructure, or produce harmful content.
 
 ## Automation
 

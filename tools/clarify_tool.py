@@ -98,6 +98,21 @@ def clarify_tool(
             ensure_ascii=False,
         )
 
+    # Independent auditor: when enabled, refuse to surface questions that
+    # could damage the brand or leak internal info.  Returns a fail-safe
+    # JSON error instead of invoking the platform callback.
+    try:
+        from agent import audit as _audit
+        if _audit.is_enabled():
+            verdict = _audit.audit_clarify(question=question, choices=choices)
+            if verdict.blocked:
+                return json.dumps(
+                    {"error": _audit.get_block_message(verdict)},
+                    ensure_ascii=False,
+                )
+    except Exception:
+        pass
+
     try:
         user_response = callback(question, choices)
     except Exception as exc:

@@ -3415,11 +3415,13 @@ def _clear_stale_openai_base_url():
 
 # (task_key, display_name, short_description)
 _AUX_TASKS: list[tuple[str, str, str]] = [
-    ("vision", "Vision", "image/screenshot analysis"),
-    ("compression", "Compression", "context summarization"),
-    ("web_extract", "Web extract", "web page summarization"),
-    ("approval", "Approval", "smart command approval"),
-    ("mcp", "MCP", "MCP tool reasoning"),
+    ("vision",           "Vision",           "image/screenshot analysis"),
+    ("compression",      "Compression",      "context summarization"),
+    ("web_extract",      "Web extract",      "web page summarization"),
+    ("session_search",   "Session search",   "past-conversation recall"),
+    ("approval",         "Approval",         "smart command approval"),
+    ("audit",            "Audit",            "independent safety auditor"),
+    ("mcp",              "MCP",              "MCP tool reasoning"),
     ("title_generation", "Title generation", "session titles"),
     ("memory_query_rewrite", "Memory query rewrite", "memory retrieval queries"),
     ("tts_audio_tags", "TTS audio tags", "Gemini TTS tag insertion"),

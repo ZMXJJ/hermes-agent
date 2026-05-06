@@ -6564,6 +6564,7 @@ _AUX_TASK_SLOTS: Tuple[str, ...] = (
     "compression",
     "skills_hub",
     "approval",
+    "audit",
     "mcp",
     "title_generation",
     "triage_specifier",
