@@ -2563,6 +2563,29 @@ def _strip_line_comment(line: str) -> str:
     return line
 
 
+def _get_group_approval_mode() -> str:
+    """Read the group chat approval mode from config. Returns 'deny' or 'escalate'."""
+    try:
+        from hermes_cli.config import load_config
+        config = load_config()
+        mode = str(cfg_get(config, "approvals", "group_mode", default="deny")).lower().strip()
+        if mode in ("escalate", "prompt", "ask"):
+            return "escalate"
+        return "deny"
+    except Exception:
+        return "deny"
+
+
+def _is_group_session() -> bool:
+    """Return True if the current session is a group or forum chat."""
+    try:
+        from gateway.session_context import get_session_env
+        chat_type = get_session_env("HERMES_SESSION_CHAT_TYPE", "")
+        return chat_type in ("group", "forum")
+    except Exception:
+        return False
+
+
 def _smart_approve(command: str, description: str) -> str:
     """Use the auxiliary LLM to assess risk and decide approval.
 
@@ -2751,6 +2774,20 @@ def _run_approval_gate(
         return {"approved": True, "message": None}
 
     if is_gateway or env_var_enabled("HERMES_EXEC_ASK"):
+        if _is_group_session() and _get_group_approval_mode() == "deny":
+            logger.info(
+                "Group auto-deny (dangerous command in group chat): %s (%s)",
+                command[:60], description,
+            )
+            return {
+                "approved": False,
+                "message": (
+                    f"BLOCKED: Command flagged as potentially dangerous ({description}) "
+                    "and cannot be approved in a group chat. "
+                    "Try a safer alternative, or run this in a private chat with the bot."
+                ),
+                "group_denied": True,
+            }
         # Interactive gateway round-trip when a notify callback is
         # registered for this session (Discord/Telegram/Slack embed +
         # buttons, same mechanism as check_dangerous_command). Blocks the
@@ -3416,6 +3453,23 @@ def check_all_command_guards(command: str, env_type: str,
             smart_denied_for_owner = True
         # An interactive owner may override DENY for this operation only.
         # ESCALATE follows the normal, potentially persistent manual behavior.
+        # In group/forum chats, auto-deny instead of showing an approval
+        # card that would leak command details to all group members.
+        if _is_group_session() and _get_group_approval_mode() == "deny":
+            combined_desc_for_llm = "; ".join(desc for _, desc, _ in warnings)
+            logger.info(
+                "Group auto-deny (escalated command in group chat): %s (%s)",
+                command[:60], combined_desc_for_llm,
+            )
+            return {
+                "approved": False,
+                "message": (
+                    f"BLOCKED: Command flagged as potentially dangerous ({combined_desc_for_llm}) "
+                    "and cannot be approved in a group chat. "
+                    "Try a safer alternative, or run this in a private chat with the bot."
+                ),
+                "group_denied": True,
+            }
 
     # --- Phase 3: Approval ---
 

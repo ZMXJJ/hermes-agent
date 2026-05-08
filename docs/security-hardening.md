@@ -31,6 +31,7 @@ approvals:
   mode: smart
   timeout: 30
   cron_mode: deny
+  group_mode: deny    # 群聊中不弹审批卡片，自动拒绝需人工审批的命令
 ```
 
 ### 1.2 三种模式对比
@@ -73,7 +74,18 @@ APPROVE  DENY   ESCALATE
 | `deny`（默认，推荐） | 拒绝执行，让 agent 想其他办法 |
 | `approve` | 自动放行（仅限完全可信的自动化流水线） |
 
-### 1.5 硬编码黑名单（始终生效）
+### 1.5 group_mode 说明
+
+群聊/论坛中遇到需要人工审批的命令的处理策略：
+
+| 值 | 行为 |
+|---|---|
+| `deny`（默认，推荐） | 自动拒绝，不弹出审批卡片。避免在群聊中暴露原始命令内容 |
+| `escalate` | 正常弹出审批卡片（仅限所有群成员都是可信管理员的场景） |
+
+> **为什么需要 group_mode？** 当 `approvals.mode: smart` 遇到无法自动判定的命令时，会 ESCALATE 到人工审批——在群聊中这意味着一张包含原始命令的审批卡片对所有群成员可见。`group_mode: deny` 把这个 ESCALATE 在群聊中自动转为 DENY，agent 收到 "BLOCKED" 后会尝试其他方法，整个过程对群成员不可见。
+
+### 1.6 硬编码黑名单（始终生效）
 
 无论 `approvals.mode` 设为什么，以下命令**永远被拒绝**，没有任何覆盖方式：
 
@@ -326,6 +338,7 @@ approvals:
   mode: smart
   timeout: 30
   cron_mode: deny
+  group_mode: deny
 
 # ── 独立审计 ────────────────────────────────────────────────
 audit:

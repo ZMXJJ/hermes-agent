@@ -31,6 +31,10 @@ RUN apt-get -o Acquire::Retries=3 update && \
     ca-certificates curl iputils-ping python3 python-is-python3 ripgrep ffmpeg gcc g++ make cmake python3-dev python3-venv libffi-dev libolm-dev procps git openssh-client docker-cli xz-utils && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Hugging Face CLI (standalone Rust binary)
+RUN curl -LsSf https://hf.co/cli/install.sh | bash -s && \
+    cp /root/.local/bin/hf /usr/local/bin/hf
+
 # ---------- s6-overlay install ----------
 # s6-overlay provides supervision for the main hermes process, the dashboard,
 # and per-profile gateways. /init becomes PID 1 below — see ENTRYPOINT.
@@ -86,6 +90,11 @@ RUN set -eu; \
 # docker/tini-shim.sh. Safe to drop once the affected catalogs are
 # updated.
 COPY --chmod=0755 docker/tini-shim.sh /usr/bin/tini
+=======
+# Install Hugging Face CLI (standalone Rust binary)
+RUN curl -LsSf https://hf.co/cli/install.sh | bash -s && \
+    cp /root/.local/bin/hf /usr/local/bin/hf
+>>>>>>> 256a85ac5 (feat(docker): add Hugging Face CLI installation to Dockerfiles)
 
 # Non-root user for runtime; UID can be overridden via HERMES_UID at runtime
 RUN useradd -u 10000 -m -d /opt/data hermes

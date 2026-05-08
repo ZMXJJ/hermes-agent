@@ -2728,10 +2728,17 @@ DEFAULT_CONFIG = {
     # Messaging approvals arrive as a push notification the user may not see
     # immediately — 60s proved too tight on Telegram/Discord (the prompt
     # expired before the user reached their phone), so the default is 300.
+    #
+    # group_mode — what to do when an escalated command would need manual
+    #   approval in a group/forum chat (where the approval card would be
+    #   visible to all members):
+    #   deny     — auto-deny; the agent sees "BLOCKED" and must find another way (default)
+    #   escalate — show the approval card as usual (only if you trust all group members)
     "approvals": {
         "mode": "smart",
         "timeout": 300,
         "cron_mode": "deny",
+        "group_mode": "deny",
         # User-defined deny rules: fnmatch globs matched against terminal
         # commands. A match blocks the command unconditionally — BEFORE the
         # --yolo / /yolo / mode=off bypass — making this the user-editable
