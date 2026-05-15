@@ -90,11 +90,6 @@ RUN set -eu; \
 # docker/tini-shim.sh. Safe to drop once the affected catalogs are
 # updated.
 COPY --chmod=0755 docker/tini-shim.sh /usr/bin/tini
-=======
-# Install Hugging Face CLI (standalone Rust binary)
-RUN curl -LsSf https://hf.co/cli/install.sh | bash -s && \
-    cp /root/.local/bin/hf /usr/local/bin/hf
->>>>>>> 256a85ac5 (feat(docker): add Hugging Face CLI installation to Dockerfiles)
 
 # Non-root user for runtime; UID can be overridden via HERMES_UID at runtime
 RUN useradd -u 10000 -m -d /opt/data hermes

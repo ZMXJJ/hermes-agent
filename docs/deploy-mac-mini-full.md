@@ -61,13 +61,13 @@ docker login modelbest-registry.cn-beijing.cr.aliyuncs.com
 拉取预构建的 arm64 镜像：
 
 ```bash
-docker pull modelbest-registry.cn-beijing.cr.aliyuncs.com/openbmb/hermes-agent:0.12.0-arm64
+docker pull modelbest-registry.cn-beijing.cr.aliyuncs.com/modelbest/hermes-agent:0.12.0-supercpm-20260508
 ```
 
 打短名 tag：
 
 ```bash
-docker tag modelbest-registry.cn-beijing.cr.aliyuncs.com/openbmb/hermes-agent:0.12.0-arm64 hermes-agent:latest
+docker tag modelbest-registry.cn-beijing.cr.aliyuncs.com/modelbest/hermes-agent:0.12.0-supercpm-20260508 hermes-agent:latest
 ```
 
 验证：
@@ -464,6 +464,8 @@ agent:
 display:
   # 系统提示（如 "Gateway shutting down"）自动删除延迟（秒）
   ephemeral_system_ttl: 5
+  # AI 生成内容声明，追加到每条回复末尾（留空则不追加）
+  ai_disclaimer: "以上内容由AI生成，仅供参考"
   # 飞书平台不显示工具执行进度
   platforms:
     feishu:
@@ -677,8 +679,8 @@ tar -czf hermes-backup-$(date +%Y%m%d).tar.gz -C ~ .hermes
 ### 6.3 升级镜像
 
 ```bash
-docker pull modelbest-registry.cn-beijing.cr.aliyuncs.com/openbmb/hermes-agent:<新版本>-arm64
-docker tag modelbest-registry.cn-beijing.cr.aliyuncs.com/openbmb/hermes-agent:<新版本>-arm64 hermes-agent:latest
+docker pull modelbest-registry.cn-beijing.cr.aliyuncs.com/modelbest/hermes-agent:<新版本>
+docker tag modelbest-registry.cn-beijing.cr.aliyuncs.com/modelbest/hermes-agent:<新版本> hermes-agent:latest
 
 cd ~/hermes-deploy
 HERMES_UID=$(id -u) HERMES_GID=$(id -g) docker compose up -d
@@ -736,8 +738,8 @@ HERMES_UID=$(id -u) HERMES_GID=$(id -g) docker compose up -d
 ```bash
 # 1. 拉取镜像
 docker login modelbest-registry.cn-beijing.cr.aliyuncs.com
-docker pull modelbest-registry.cn-beijing.cr.aliyuncs.com/openbmb/hermes-agent:0.12.0-arm64
-docker tag modelbest-registry.cn-beijing.cr.aliyuncs.com/openbmb/hermes-agent:0.12.0-arm64 hermes-agent:latest
+docker pull modelbest-registry.cn-beijing.cr.aliyuncs.com/modelbest/hermes-agent:0.12.0-supercpm-20260508
+docker tag modelbest-registry.cn-beijing.cr.aliyuncs.com/modelbest/hermes-agent:0.12.0-supercpm-20260508 hermes-agent:latest
 
 # 2. 初始化
 mkdir -p ~/.hermes ~/hermes-deploy && cd ~/hermes-deploy

@@ -430,6 +430,12 @@ def _failure_verdict(reason: str, *, block: bool) -> AuditVerdict:
 def _call_auditor(messages: List[Dict[str, Any]]) -> AuditVerdict:
     """Invoke the auditor LLM and parse its response.
 
+    Retries up to ``audit.retry_attempts`` times (default 1) with
+    exponential back-off (0.5s, 1s, 2s, …) when the LLM call raises or
+    the response is unparseable.  Only transient failures are retried —
+    once a structurally valid verdict is obtained it is returned
+    immediately regardless of allow/block.
+
     Failure handling honours ``audit.failure_mode`` from config — ``block``
     fails closed, ``allow`` fails open while still emitting a WARNING audit
     log entry at the call site.
@@ -438,6 +444,12 @@ def _call_auditor(messages: List[Dict[str, Any]]) -> AuditVerdict:
     cfg = _load_audit_config()
     failure_mode = str(cfg.get("failure_mode", "block")).strip().lower()
     fail_block = failure_mode != "allow"
+
+    retry_attempts = cfg.get("retry_attempts", 1)
+    try:
+        retry_attempts = max(0, int(retry_attempts))
+    except (TypeError, ValueError):
+        retry_attempts = 1
 
     timeout = cfg.get("request_timeout") or 0
     try:
@@ -453,27 +465,43 @@ def _call_auditor(messages: List[Dict[str, Any]]) -> AuditVerdict:
             f"auxiliary_client import failed: {exc}", block=fail_block,
         )
 
-    try:
-        response = call_llm(
-            task="audit",
-            messages=messages,
-            temperature=0,
-            max_tokens=400,
-            timeout=timeout_arg,
-        )
-    except Exception as exc:
-        return _failure_verdict(
-            f"auditor LLM call failed: {exc}", block=fail_block,
-        )
+    import time
 
-    try:
-        raw = response.choices[0].message.content or ""
-    except Exception as exc:  # pragma: no cover — defensive
-        return _failure_verdict(
-            f"auditor response malformed: {exc}", block=fail_block,
-        )
+    last_error: Optional[str] = None
+    for attempt in range(1 + retry_attempts):
+        if attempt > 0:
+            backoff = min(0.5 * (2 ** (attempt - 1)), 4.0)
+            logger.info(
+                "Audit retry %d/%d after %.1fs backoff (previous: %s)",
+                attempt, retry_attempts, backoff, last_error,
+            )
+            time.sleep(backoff)
 
-    return parse_verdict(raw)
+        try:
+            response = call_llm(
+                task="audit",
+                messages=messages,
+                temperature=0,
+                max_tokens=400,
+                timeout=timeout_arg,
+            )
+        except Exception as exc:
+            last_error = f"auditor LLM call failed: {exc}"
+            continue
+
+        try:
+            raw = response.choices[0].message.content or ""
+        except Exception as exc:
+            last_error = f"auditor response malformed: {exc}"
+            continue
+
+        verdict = parse_verdict(raw)
+        if verdict.source != "failure_block":
+            return verdict
+
+        last_error = f"auditor parse failure: {verdict.reason}"
+
+    return _failure_verdict(last_error or "auditor exhausted retries", block=fail_block)
 
 
 # ---------------------------------------------------------------------------

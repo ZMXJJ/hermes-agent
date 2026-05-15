@@ -20942,8 +20942,21 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 for queued in pending:
                     _deliver_bg_review_message(queued)
 
-            # Background review delivery — send "💾 Memory updated" etc. to user
+            # Background review delivery — send "💾 Memory updated" etc. to user.
+            # Gated by display.background_review_notifications (default true).
+            # Set to false in config.yaml to suppress the message while
+            # keeping the self-improvement review running silently.
+            _bg_review_notify = True
+            try:
+                _bg_review_notify = cfg_get(
+                    _cfg, "display", "background_review_notifications"
+                ) is not False
+            except Exception:
+                pass
+
             def _bg_review_send(message: str) -> None:
+                if not _bg_review_notify:
+                    return
                 if not _status_adapter or not _run_still_current():
                     return
                 if not _bg_review_release.is_set():

@@ -297,6 +297,123 @@ def test_failure_mode_allow_lets_call_through_with_warning(monkeypatch, caplog):
     assert any("audit_failure" in r.getMessage() for r in caplog.records)
 
 
+# ── Retry behaviour ───────────────────────────────────────────────────────
+
+
+def _audit_cfg_with_retries(retries: int = 1, failure_mode: str = "block") -> Dict[str, Any]:
+    return {
+        "enabled": True, "audit_tools": True, "audit_commands": True,
+        "audit_questions": True, "audit_replies": True,
+        "failure_mode": failure_mode, "policy": "", "log_allowed": False,
+        "context_tail_messages": 4, "request_timeout": 0,
+        "retry_attempts": retries,
+    }
+
+
+def test_retry_succeeds_after_transient_failure(monkeypatch):
+    """Auditor retries once and succeeds on the second attempt."""
+
+    from agent import audit
+
+    audit.reset_cache()
+    monkeypatch.setattr(audit, "_load_audit_config", lambda: _audit_cfg_with_retries(1))
+
+    call_count = 0
+
+    def flaky_call_llm(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("transient network error")
+        msg = SimpleNamespace(content='{"verdict": "allow", "risk_level": "none"}')
+        choice = SimpleNamespace(message=msg)
+        return SimpleNamespace(choices=[choice])
+
+    monkeypatch.setattr("agent.auxiliary_client.call_llm", flaky_call_llm)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    v = audit.audit_command(command="ls -la")
+    assert v.allowed is True
+    assert v.source == "auditor"
+    assert call_count == 2
+
+
+def test_retry_exhausted_respects_failure_mode(monkeypatch):
+    """After all retries fail, failure_mode decides the outcome."""
+
+    from agent import audit
+
+    audit.reset_cache()
+    monkeypatch.setattr(audit, "_load_audit_config", lambda: _audit_cfg_with_retries(2, "allow"))
+
+    call_count = 0
+
+    def always_fail(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError("persistent failure")
+
+    monkeypatch.setattr("agent.auxiliary_client.call_llm", always_fail)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    v = audit.audit_command(command="ls")
+    assert v.allowed is True
+    assert v.source == "failure_allow"
+    assert call_count == 3  # 1 initial + 2 retries
+
+
+def test_retry_on_unparseable_response_then_succeeds(monkeypatch):
+    """Unparseable responses trigger a retry; a good response on retry wins."""
+
+    from agent import audit
+
+    audit.reset_cache()
+    monkeypatch.setattr(audit, "_load_audit_config", lambda: _audit_cfg_with_retries(1))
+
+    call_count = 0
+
+    def garbled_then_ok(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            content = "I'm confused and can't decide"
+        else:
+            content = '{"verdict": "allow", "risk_level": "none"}'
+        msg = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=msg)
+        return SimpleNamespace(choices=[choice])
+
+    monkeypatch.setattr("agent.auxiliary_client.call_llm", garbled_then_ok)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    v = audit.audit_command(command="echo hello")
+    assert v.allowed is True
+    assert call_count == 2
+
+
+def test_retry_zero_means_no_retry(monkeypatch):
+    """retry_attempts=0 disables retries entirely."""
+
+    from agent import audit
+
+    audit.reset_cache()
+    monkeypatch.setattr(audit, "_load_audit_config", lambda: _audit_cfg_with_retries(0))
+
+    call_count = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("agent.auxiliary_client.call_llm", fail_once)
+
+    v = audit.audit_command(command="ls")
+    assert v.allowed is False
+    assert v.source == "failure_block"
+    assert call_count == 1
+
+
 # ── Logging behaviour ─────────────────────────────────────────────────────
 
 

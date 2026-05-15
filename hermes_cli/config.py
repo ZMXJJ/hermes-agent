@@ -1870,6 +1870,10 @@ DEFAULT_CONFIG = {
         # Per-call timeout for the auditor LLM in seconds.  Falls back to
         # ``auxiliary.audit.timeout`` when unset (0 / null).
         "request_timeout": 0,
+        # Number of retry attempts when the auditor LLM call fails or
+        # returns an unparseable response.  Uses exponential back-off
+        # (0.5s → 1s → 2s → …, capped at 4s).  Set to 0 to disable.
+        "retry_attempts": 1,
     },
 
     "display": {
@@ -2050,6 +2054,10 @@ DEFAULT_CONFIG = {
             "telegram": {"streaming": True},
             "discord": {"streaming": False},
         },
+        # Whether to deliver "💾 Self-improvement review: ..." messages to
+        # the chat when the background skill/memory review completes.  The
+        # review still runs regardless; this only controls message delivery.
+        "background_review_notifications": True,
         # Gateway runtime-metadata footer appended to the FINAL message of a turn
         # (disabled by default to keep replies minimal). When enabled, renders
         # e.g. `model · 68% · ~/projects/hermes`. Per-platform overrides go under

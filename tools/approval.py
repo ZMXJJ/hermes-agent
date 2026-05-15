@@ -3471,6 +3471,27 @@ def check_all_command_guards(command: str, env_type: str,
                 "group_denied": True,
             }
 
+    # --- Phase 2.9: Group chat guard (applies regardless of approval mode) ---
+    # In group/forum chats with group_mode=deny, auto-deny any command that
+    # would otherwise show an interactive approval card.  This runs AFTER
+    # smart-approval (which may auto-approve/deny without reaching here) but
+    # BEFORE the gateway blocking prompt in Phase 3.
+    if (is_gateway or is_ask) and _is_group_session() and _get_group_approval_mode() == "deny":
+        combined_desc_group = "; ".join(desc for _, desc, _ in warnings)
+        logger.info(
+            "Group auto-deny (approval would be required in group chat): %s (%s)",
+            command[:60], combined_desc_group,
+        )
+        return {
+            "approved": False,
+            "message": (
+                f"BLOCKED: Command flagged as potentially dangerous ({combined_desc_group}) "
+                "and cannot be approved in a group chat. "
+                "Try a safer alternative, or run this in a private chat with the bot."
+            ),
+            "group_denied": True,
+        }
+
     # --- Phase 3: Approval ---
 
     # Combine descriptions for a single approval prompt
