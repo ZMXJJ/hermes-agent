@@ -13370,6 +13370,26 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             except Exception:
                 _intentional_silence = False
 
+            # When agent_status_notifications is off, replace technical
+            # error messages with a user-friendly fallback so internal
+            # details (stack traces, errno, provider names) are never
+            # exposed in group chats.
+            _hide_errors = False
+            try:
+                _hide_errors = cfg_get(
+                    _cfg, "display", "agent_status_notifications"
+                ) is False
+            except Exception:
+                pass
+            if _hide_errors and agent_result.get("failed") and response:
+                logger.warning(
+                    "Suppressing technical error from chat (agent_status_notifications=false): %s",
+                    response[:200],
+                )
+                response = (
+                    "抱歉，处理您的请求时遇到了临时问题，请稍后再试。"
+                )
+
             # Convert the agent's internal "(empty)" sentinel into a
             # user-friendly message.  "(empty)" means the model failed to
             # produce visible content after exhausting all retries (nudge,
@@ -20344,7 +20364,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             except Exception as _e:
                 logger.debug("event_callback hook error: %s", _e)
 
-        # Bridge sync status_callback → async adapter.send for context pressure
+        # Bridge sync status_callback → async adapter.send for context pressure.
+        # Gated by display.agent_status_notifications (default true).  When
+        # false, lifecycle / warning messages (provider timeouts, retries,
+        # reconnections) are still logged but NOT delivered to the chat.
         _status_adapter = self._adapter_for_source(source)
         _status_chat_id = source.chat_id
         if source.platform == Platform.FEISHU and source.thread_id and event_message_id:
@@ -20358,8 +20381,17 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             }
         else:
             _status_thread_metadata = self._thread_metadata_for_source(source, event_message_id) if _progress_thread_id else None
+        _agent_status_notify = True
+        try:
+            _agent_status_notify = cfg_get(
+                _cfg, "display", "agent_status_notifications"
+            ) is not False
+        except Exception:
+            pass
 
         def _status_callback_sync(event_type: str, message: str) -> None:
+            if not _agent_status_notify:
+                return
             if not _status_adapter or not _run_still_current():
                 return
             prepared_message = _prepare_gateway_status_message(

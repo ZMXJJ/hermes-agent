@@ -2058,6 +2058,10 @@ DEFAULT_CONFIG = {
         # the chat when the background skill/memory review completes.  The
         # review still runs regardless; this only controls message delivery.
         "background_review_notifications": True,
+        # Whether to deliver agent lifecycle/warning status messages to the
+        # chat (provider timeouts, retries, reconnections, etc.).  When
+        # false, these messages are still logged but not sent to the user.
+        "agent_status_notifications": True,
         # Gateway runtime-metadata footer appended to the FINAL message of a turn
         # (disabled by default to keep replies minimal). When enabled, renders
         # e.g. `model · 68% · ~/projects/hermes`. Per-platform overrides go under
