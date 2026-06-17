@@ -13377,7 +13377,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             _hide_errors = False
             try:
                 _hide_errors = cfg_get(
-                    _cfg, "display", "agent_status_notifications"
+                    _load_gateway_config(), "display", "agent_status_notifications"
                 ) is False
             except Exception:
                 pass
@@ -15168,6 +15168,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                         logger.warning("Background task vision enrichment failed: %s", e)
 
             def run_sync():
+                os.environ["HERMES_SESSION_CHAT_TYPE"] = source.chat_type or ""
                 agent = AIAgent(
                     model=turn_route["model"],
                     **turn_route["runtime"],
@@ -20384,7 +20385,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         _agent_status_notify = True
         try:
             _agent_status_notify = cfg_get(
-                _cfg, "display", "agent_status_notifications"
+                user_config, "display", "agent_status_notifications"
             ) is not False
         except Exception:
             pass
@@ -20449,6 +20450,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             # slash-worker *subprocess* exports HERMES_SESSION_KEY (from its own
             # --session-key argv, a separate process) — so removing this in-process
             # gateway write does not affect any of them.
+            # HERMES_SESSION_CHAT_TYPE is likewise propagated via contextvars
+            # (_set_session_env → set_session_vars(chat_type=…)).
 
             # Map platform enum to the platform hint key the agent understands.
             # Platform.LOCAL ("local") maps to "cli"; others pass through as-is.
@@ -20981,7 +20984,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             _bg_review_notify = True
             try:
                 _bg_review_notify = cfg_get(
-                    _cfg, "display", "background_review_notifications"
+                    user_config, "display", "background_review_notifications"
                 ) is not False
             except Exception:
                 pass
