@@ -1874,6 +1874,11 @@ DEFAULT_CONFIG = {
         # returns an unparseable response.  Uses exponential back-off
         # (0.5s → 1s → 2s → …, capped at 4s).  Set to 0 to disable.
         "retry_attempts": 1,
+        # Maximum tokens the auditor model may generate per verdict.
+        # The auditor only needs to return a small JSON object, so 400 is
+        # usually plenty.  Raise this if you use a verbose model that
+        # pads its output with preamble or reasoning before the JSON.
+        "max_tokens": 400,
     },
 
     "display": {

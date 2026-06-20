@@ -308,6 +308,18 @@ TOOLSETS = {
         "includes": []
     },
 
+    "feishu_im": {
+        "description": "Read-only Feishu/Lark chat messages via lark-cli (user identity)",
+        "tools": [
+            "feishu_im_chat_list",
+            "feishu_im_chat_messages",
+            "feishu_im_chat_search",
+            "feishu_im_messages_search",
+            "feishu_im_messages_get",
+        ],
+        "includes": []
+    },
+
     "feishu_drive": {
         "description": "Feishu/Lark document comment operations (list, reply, add)",
         "tools": [
@@ -532,6 +544,11 @@ TOOLSETS = {
             "feishu_drive_list_comment_replies",
             "feishu_drive_reply_comment",
             "feishu_drive_add_comment",
+            "feishu_im_chat_list",
+            "feishu_im_chat_messages",
+            "feishu_im_chat_search",
+            "feishu_im_messages_search",
+            "feishu_im_messages_get",
         ],
         "includes": []
     },

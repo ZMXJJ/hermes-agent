@@ -639,3 +639,47 @@ def test_fire_stream_delta_buffers_when_audit_active(monkeypatch):
     agent._fire_stream_delta("hello")
     assert received == [], "callbacks must not fire while buffering"
     assert "hello" in agent._audit_pending_stream
+
+
+# ── Configurable max_tokens ───────────────────────────────────────────────
+
+
+def test_audit_max_tokens_forwarded_to_call_llm(monkeypatch):
+    """``audit.max_tokens`` in config is forwarded to the auditor LLM call."""
+
+    from agent import audit
+
+    audit.reset_cache()
+    cfg = {
+        "enabled": True, "audit_tools": True, "audit_commands": True,
+        "audit_questions": True, "audit_replies": True,
+        "failure_mode": "block", "policy": "", "log_allowed": False,
+        "context_tail_messages": 4, "request_timeout": 0,
+        "retry_attempts": 0,
+        "max_tokens": 1024,
+    }
+    monkeypatch.setattr(audit, "_load_audit_config", lambda: cfg)
+    captured = _stub_call_llm_returning('{"verdict": "allow"}', monkeypatch)
+
+    audit.audit_command(command="ls")
+    assert captured[0]["max_tokens"] == 1024
+
+
+def test_audit_max_tokens_defaults_to_400(monkeypatch):
+    """When ``audit.max_tokens`` is absent, the auditor defaults to 400."""
+
+    from agent import audit
+
+    audit.reset_cache()
+    cfg = {
+        "enabled": True, "audit_tools": True, "audit_commands": True,
+        "audit_questions": True, "audit_replies": True,
+        "failure_mode": "block", "policy": "", "log_allowed": False,
+        "context_tail_messages": 4, "request_timeout": 0,
+        "retry_attempts": 0,
+    }
+    monkeypatch.setattr(audit, "_load_audit_config", lambda: cfg)
+    captured = _stub_call_llm_returning('{"verdict": "allow"}', monkeypatch)
+
+    audit.audit_command(command="ls")
+    assert captured[0]["max_tokens"] == 400

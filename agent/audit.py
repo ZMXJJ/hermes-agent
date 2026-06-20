@@ -458,6 +458,12 @@ def _call_auditor(messages: List[Dict[str, Any]]) -> AuditVerdict:
         timeout = 0
     timeout_arg = timeout if timeout > 0 else None
 
+    audit_max_tokens = cfg.get("max_tokens", 400)
+    try:
+        audit_max_tokens = max(1, int(audit_max_tokens))
+    except (TypeError, ValueError):
+        audit_max_tokens = 400
+
     try:
         from agent.auxiliary_client import call_llm
     except Exception as exc:  # pragma: no cover — import-order belt
@@ -482,7 +488,7 @@ def _call_auditor(messages: List[Dict[str, Any]]) -> AuditVerdict:
                 task="audit",
                 messages=messages,
                 temperature=0,
-                max_tokens=400,
+                max_tokens=audit_max_tokens,
                 timeout=timeout_arg,
             )
         except Exception as exc:

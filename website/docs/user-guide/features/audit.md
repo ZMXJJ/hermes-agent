@@ -80,6 +80,11 @@ audit:
   # Per-call timeout for the auditor LLM (seconds).
   # Falls back to auxiliary.audit.timeout when unset.
   request_timeout: 0
+
+  # Maximum tokens the auditor model may generate per verdict (default 400).
+  # The auditor only returns a small JSON object, so 400 is usually enough.
+  # Raise this if you use a verbose model that adds preamble before the JSON.
+  max_tokens: 400
 ```
 
 ### `auxiliary.audit` section
