@@ -70,6 +70,25 @@ def _stub_call_llm_returning(content: str, monkeypatch: pytest.MonkeyPatch) -> L
     return captured
 
 
+def _stub_call_llm_with_reasoning(
+    content: str,
+    reasoning_content: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> List[Dict[str, Any]]:
+    """Patch ``call_llm`` to return a response with both content and reasoning_content."""
+
+    captured: List[Dict[str, Any]] = []
+
+    def fake_call_llm(*args, **kwargs):
+        captured.append(kwargs)
+        msg = SimpleNamespace(content=content, reasoning_content=reasoning_content)
+        choice = SimpleNamespace(message=msg)
+        return SimpleNamespace(choices=[choice])
+
+    monkeypatch.setattr("agent.auxiliary_client.call_llm", fake_call_llm)
+    return captured
+
+
 def _stub_call_llm_raising(exc: Exception, monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_call_llm(*args, **kwargs):
         raise exc
@@ -683,3 +702,143 @@ def test_audit_max_tokens_defaults_to_400(monkeypatch):
 
     audit.audit_command(command="ls")
     assert captured[0]["max_tokens"] == 400
+
+
+# ── Think-block stripping in parse_verdict ─────────────────────────────
+
+
+def test_parse_verdict_strips_think_block_before_extracting_json():
+    """JSON inside <think> must not be mistaken for the verdict."""
+
+    from agent.audit import parse_verdict
+
+    raw = (
+        '<think>The command is "ls". My analysis: {"verdict": "allow"} seems right. '
+        "Wait, let me reconsider the security implications...</think>\n"
+        '{"verdict": "block", "risk_level": "high", "reason": "dangerous"}'
+    )
+    v = parse_verdict(raw)
+    assert v.allowed is False, "must use the JSON AFTER the think block, not inside it"
+    assert v.risk_level == "high"
+    assert v.reason == "dangerous"
+
+
+def test_parse_verdict_strips_thinking_variant():
+    """<thinking> variant is also stripped."""
+
+    from agent.audit import parse_verdict
+
+    raw = (
+        '<thinking>Let me reason about {"verdict": "block"}...</thinking>'
+        '{"verdict": "allow", "risk_level": "none"}'
+    )
+    v = parse_verdict(raw)
+    assert v.allowed is True
+
+
+def test_parse_verdict_strips_reasoning_variant():
+    """<reasoning> variant is also stripped."""
+
+    from agent.audit import parse_verdict
+
+    raw = (
+        '<reasoning>Internal: {"verdict": "block", "reason": "test"}</reasoning>\n'
+        '{"verdict": "allow", "risk_level": "low"}'
+    )
+    v = parse_verdict(raw)
+    assert v.allowed is True
+    assert v.risk_level == "low"
+
+
+def test_parse_verdict_unterminated_think_block():
+    """Unterminated <think> at start of content is stripped."""
+
+    from agent.audit import parse_verdict
+
+    raw = (
+        '<think>This model never closes its think tag and has '
+        '{"verdict": "block"} in reasoning\n'
+    )
+    v = parse_verdict(raw)
+    assert v.source == "failure_block", "only reasoning content, no verdict outside"
+
+
+def test_parse_verdict_reasoning_only_returns_failure():
+    """Response that is purely a think block with no verdict outside."""
+
+    from agent.audit import parse_verdict
+
+    raw = '<think>I think this is fine: {"verdict": "allow"}</think>'
+    v = parse_verdict(raw)
+    assert v.allowed is False
+    assert v.source == "failure_block"
+    assert "only reasoning" in v.reason
+
+
+def test_parse_verdict_no_think_block_still_works():
+    """Normal JSON response (no think block) is unaffected."""
+
+    from agent.audit import parse_verdict
+
+    raw = '{"verdict": "allow", "risk_level": "none", "reason": "safe"}'
+    v = parse_verdict(raw)
+    assert v.allowed is True
+    assert v.risk_level == "none"
+
+
+# ── Reasoning-field fallback (content empty, verdict in reasoning) ─────
+
+
+def test_auditor_falls_back_to_reasoning_content_when_content_empty(monkeypatch):
+    """When content is empty but reasoning_content has the verdict, use it."""
+
+    from agent import audit
+
+    _enable_audit(monkeypatch)
+    _stub_call_llm_with_reasoning(
+        content="",
+        reasoning_content=(
+            'Let me analyze... this looks safe. '
+            '{"verdict": "allow", "risk_level": "none", "reason": "benign command"}'
+        ),
+        monkeypatch=monkeypatch,
+    )
+    v = audit.audit_command(command="ls -la")
+    assert v.allowed is True
+    assert v.reason == "benign command"
+
+
+def test_auditor_prefers_content_over_reasoning_content(monkeypatch):
+    """When content has a verdict, reasoning_content is ignored."""
+
+    from agent import audit
+
+    _enable_audit(monkeypatch)
+    _stub_call_llm_with_reasoning(
+        content='{"verdict": "block", "reason": "dangerous"}',
+        reasoning_content='{"verdict": "allow", "reason": "seems fine"}',
+        monkeypatch=monkeypatch,
+    )
+    v = audit.audit_command(command="rm -rf /")
+    assert v.allowed is False
+    assert v.reason == "dangerous"
+
+
+def test_auditor_reasoning_content_truncated_still_fails_closed(monkeypatch):
+    """Truncated reasoning (no complete JSON) fails closed as expected."""
+
+    from agent import audit
+
+    _enable_audit(monkeypatch)
+    _stub_call_llm_with_reasoning(
+        content="",
+        reasoning_content=(
+            "First, I am considering the context: The main agent has proposed "
+            "a reply. I need to decide whether this reply is safe to proceed "
+            "with. Let me check against policy..."
+        ),
+        monkeypatch=monkeypatch,
+    )
+    v = audit.audit_command(command="echo hello")
+    assert v.allowed is False
+    assert v.source == "failure_block"

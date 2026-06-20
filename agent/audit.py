@@ -316,6 +316,30 @@ def _summarize_conversation_tail(
 
 _FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL | re.IGNORECASE)
 
+_THINK_BLOCK_RE = re.compile(
+    r"<(?:think|thinking|reasoning|thought|REASONING_SCRATCHPAD)\b[^>]*>"
+    r".*?"
+    r"</(?:think|thinking|reasoning|thought|REASONING_SCRATCHPAD)>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+_UNTERMINATED_THINK_RE = re.compile(
+    r"(?:^|\n)[ \t]*<(?:think|thinking|reasoning|thought|REASONING_SCRATCHPAD)\b[^>]*>.*$",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _strip_think_blocks(text: str) -> str:
+    """Remove reasoning/thinking XML blocks from auditor output.
+
+    Reasoning models may embed ``<think>…</think>`` blocks containing
+    intermediate JSON-like objects that would confuse the verdict parser.
+    Strip them before searching for the actual verdict JSON.
+    """
+    text = _THINK_BLOCK_RE.sub("", text)
+    text = _UNTERMINATED_THINK_RE.sub("", text)
+    return text.strip()
+
 
 def parse_verdict(raw: str) -> AuditVerdict:
     """Parse the auditor's raw response into an :class:`AuditVerdict`.
@@ -324,6 +348,9 @@ def parse_verdict(raw: str) -> AuditVerdict:
       - Plain JSON objects.
       - Fenced ``json`` code blocks.
       - Stray prose preceding the JSON object.
+      - ``<think>``/``<thinking>``/``<reasoning>`` blocks (stripped before
+        parsing so intermediate reasoning JSON is never mistaken for the
+        actual verdict).
     On unparseable input, returns a *blocked* verdict so that a confused
     auditor never accidentally lets actions through.
     """
@@ -338,7 +365,16 @@ def parse_verdict(raw: str) -> AuditVerdict:
             raw="",
         )
 
-    text = raw.strip()
+    text = _strip_think_blocks(raw.strip())
+    if not text:
+        return AuditVerdict(
+            allowed=False,
+            risk_level="medium",
+            categories=["audit_parse_failure"],
+            reason="Auditor response contained only reasoning with no verdict",
+            source="failure_block",
+            raw=raw,
+        )
     candidate = ""
 
     fenced = _FENCED_JSON_RE.search(text)
@@ -496,7 +532,19 @@ def _call_auditor(messages: List[Dict[str, Any]]) -> AuditVerdict:
             continue
 
         try:
-            raw = response.choices[0].message.content or ""
+            msg = response.choices[0].message
+            raw = msg.content or ""
+            # Reasoning models (DeepSeek, Mimo, Moonshot, etc.) may put all
+            # output into a dedicated reasoning field while leaving content
+            # empty.  Fall back to reasoning_content / reasoning so the
+            # verdict parser can still find the JSON verdict if the model
+            # embedded one at the end of its chain of thought.
+            if not raw.strip():
+                for _field in ("reasoning_content", "reasoning"):
+                    _val = getattr(msg, _field, None)
+                    if _val and isinstance(_val, str) and _val.strip():
+                        raw = _val
+                        break
         except Exception as exc:
             last_error = f"auditor response malformed: {exc}"
             continue

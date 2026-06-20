@@ -2398,7 +2398,6 @@ def terminal_tool(
             # module's own failure_mode setting governs whether the call
             # is blocked or allowed when the auditor itself errors.
             pass
->>>>>>> a15e7d448 (feat(audit): implement independent auditor for enhanced safety and compliance)
 
         # Pre-exec security checks (tirith + dangerous command detection)
         # Skip check if force=True (user has confirmed they want to run it)
