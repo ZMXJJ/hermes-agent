@@ -13441,10 +13441,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                         response[:200],
                     )
                     if _is_ctx_fail:
-                        response = (
-                            "小钢炮脑子装太满了，请用 /compact 压缩对话，"
-                            "或 /reset 重新开始～"
-                        )
+                        response = "小钢炮脑子状态满了，请一会儿再试试吧"
                     else:
                         response = "小钢炮出了点小问题，请稍后再试试吧～"
 
@@ -14022,10 +14019,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 # 400 with a large session is context overflow.
                 # 500 with a large session often means the payload is too large
                 # for the API to process — treat it the same way.
-                return (
-                    "小钢炮脑子装太满了，请用 /compact 压缩对话，"
-                    "或 /reset 重新开始～"
-                )
+                return "小钢炮脑子状态满了，请一会儿再试试吧"
             return "小钢炮出了点小问题，请稍后再试试吧～"
         finally:
             # Restore session context variables to their pre-handler state
