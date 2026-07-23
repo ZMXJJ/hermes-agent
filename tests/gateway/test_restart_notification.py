@@ -658,11 +658,11 @@ async def test_shutdown_notifications_use_cached_live_thread_source_when_origin_
 
     await runner._notify_active_sessions_of_shutdown()
 
-    adapter.send.assert_awaited_once_with(
-        "parent-42",
-        "⚠️ Gateway shutting down — Your current task will be interrupted.",
-        metadata={"thread_id": "topic-7"},
-    )
+    from gateway.run import _SHUTDOWN_QUIPS
+    call = adapter.send.await_args
+    assert call.args[0] == "parent-42"
+    assert call.args[1] in _SHUTDOWN_QUIPS
+    assert call.kwargs["metadata"] == {"thread_id": "topic-7"}
 
 
 @pytest.mark.asyncio
@@ -681,7 +681,8 @@ async def test_restart_shutdown_notification_anchors_telegram_dm_topic():
 
     call = adapter.send.await_args
     assert call.args[0] == "123456"
-    assert "Gateway restarting" in call.args[1]
+    from gateway.run import _RESTART_QUIPS
+    assert call.args[1] in _RESTART_QUIPS
     assert call.kwargs["metadata"] == {
         "thread_id": "20197",
         "telegram_dm_topic_reply_fallback": True,

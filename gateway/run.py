@@ -2409,6 +2409,22 @@ _INTERRUPT_REASON_SSE_DISCONNECT = "SSE client disconnected"
 _INTERRUPT_REASON_GATEWAY_SHUTDOWN = "Gateway shutting down"
 _INTERRUPT_REASON_GATEWAY_RESTART = "Gateway restarting"
 
+# User-facing quips for shutdown/restart notifications (小钢炮 style).
+# Kept module-level so tests can assert membership instead of hardcoding
+# any single phrasing.
+_SHUTDOWN_QUIPS = [
+    "小钢炮走神了，一会儿再试试吧～",
+    "容我喝口水，马上回来 💧",
+    "信号不太好，稍等我重新连一下 📡",
+    "打个盹儿，别走开哦 😴",
+    "我去充个电，马上满血复活 🔋",
+]
+_RESTART_QUIPS = [
+    "小钢炮重启中，一会儿就回来，刚才聊到哪儿了来着？",
+    "重新加载中～之前的问题我还记得，稍等哈",
+    "系统刷新一下，回来接着聊～",
+]
+
 _CONTROL_INTERRUPT_MESSAGES = frozenset(
     {
         _INTERRUPT_REASON_STOP.lower(),
@@ -6367,18 +6383,6 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         active = self._snapshot_running_agents()
         restart_source = self._restart_command_source if self._restart_requested else None
 
-        _SHUTDOWN_QUIPS = [
-            "小钢炮走神了，一会儿再试试吧～",
-            "容我喝口水，马上回来 💧",
-            "信号不太好，稍等我重新连一下 📡",
-            "打个盹儿，别走开哦 😴",
-            "我去充个电，马上满血复活 🔋"
-        ]
-        _RESTART_QUIPS = [
-            "小钢炮重启中，一会儿就回来，刚才聊到哪儿了来着？",
-            "重新加载中～之前的问题我还记得，稍等哈",
-            "系统刷新一下，回来接着聊～",
-        ]
         quips = _RESTART_QUIPS if self._restart_requested else _SHUTDOWN_QUIPS
         msg = random.choice(quips)
 
@@ -13370,26 +13374,6 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             except Exception:
                 _intentional_silence = False
 
-            # When agent_status_notifications is off, replace technical
-            # error messages with a user-friendly fallback so internal
-            # details (stack traces, errno, provider names) are never
-            # exposed in group chats.
-            _hide_errors = False
-            try:
-                _hide_errors = cfg_get(
-                    _load_gateway_config(), "display", "agent_status_notifications"
-                ) is False
-            except Exception:
-                pass
-            if _hide_errors and agent_result.get("failed") and response:
-                logger.warning(
-                    "Suppressing technical error from chat (agent_status_notifications=false): %s",
-                    response[:200],
-                )
-                response = (
-                    "抱歉，处理您的请求时遇到了临时问题，请稍后再试。"
-                )
-
             # Convert the agent's internal "(empty)" sentinel into a
             # user-friendly message.  "(empty)" means the model failed to
             # produce visible content after exhausting all retries (nudge,
@@ -13397,9 +13381,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             # looks like a bug; a short explanation is more helpful.
             if response == "(empty)" and not _intentional_silence:
                 response = (
-                    "⚠️ The model returned no response after processing tool "
-                    "results. This can happen with some models — try again or "
-                    "rephrase your question."
+                    "小钢炮没想出来怎么回答，换个方式再问问试试？"
                 )
             agent_messages = agent_result.get("messages", [])
             _response_time = time.time() - _msg_start_time
@@ -13443,6 +13425,28 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     agent_result, response, history_len=len(history),
                 )
                 response = _sanitize_gateway_final_response(source.platform, response)
+
+                # 小钢炮化: the shared helper produces English technical
+                # messages (error details, status codes).  Those must never
+                # reach the chat — replace with friendly Chinese fallbacks,
+                # keeping the full detail in the log only.
+                if agent_result.get("failed") and response:
+                    _err_str = str(agent_result.get("error", "")).lower()
+                    _is_ctx_fail = any(p in _err_str for p in (
+                        "context", "token", "too large", "too long",
+                        "exceed", "payload",
+                    )) or ("400" in _err_str and len(history) > 50)
+                    logger.warning(
+                        "Suppressing technical error from chat: %s",
+                        response[:200],
+                    )
+                    if _is_ctx_fail:
+                        response = (
+                            "小钢炮脑子装太满了，请用 /compact 压缩对话，"
+                            "或 /reset 重新开始～"
+                        )
+                    else:
+                        response = "小钢炮出了点小问题，请稍后再试试吧～"
 
             # Ordering contract: the agent thread already updated the contextvar
             # in conversation_compression.py; propagate to SessionEntry + _save().
@@ -13989,14 +13993,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 logger.debug("Failed to persist inbound user message after agent exception", exc_info=True)
             # Log full details server-side only; never expose raw exception
             # types or messages to end users (info-leakage risk).
-            status_hint = ""
             status_code = getattr(e, "status_code", None)
             _hist_len = len(history) if 'history' in locals() else 0
-            if status_code == 401:
-                status_hint = " Check your API key or run `claude /login` to refresh OAuth credentials."
-            elif status_code == 402:
-                status_hint = " Your API balance or quota is exhausted. Check your provider dashboard."
-            elif status_code == 429:
+            if status_code == 429:
                 # Check if this is a plan usage limit (resets on a schedule) vs a transient rate limit
                 _err_body = getattr(e, "response", None)
                 _err_json = {}
@@ -14012,29 +14011,22 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     if _resets_in and _resets_in > 0:
                         import math
                         _hours = math.ceil(_resets_in / 3600)
-                        status_hint = f" Your plan's usage limit has been reached. It resets in ~{_hours}h."
+                        return f"小钢炮的额度用完了，大约 {_hours} 小时后恢复～"
                     else:
-                        status_hint = " Your plan's usage limit has been reached. Please wait until it resets."
+                        return "小钢炮的额度用完了，请等待恢复后再试～"
                 else:
-                    status_hint = " You are being rate-limited. Please wait a moment and try again."
+                    return "小钢炮被限流了，请稍等片刻再试试～"
             elif status_code == 529:
-                status_hint = " The API is temporarily overloaded. Please try again shortly."
-            elif status_code in {400, 500}:
+                return "小钢炮有点忙不过来，请稍等片刻再试试～"
+            elif (status_code in (400, 500)) and _hist_len > 50:
                 # 400 with a large session is context overflow.
                 # 500 with a large session often means the payload is too large
                 # for the API to process — treat it the same way.
-                if _hist_len > 50:
-                    return (
-                        "⚠️ Session too large for the model's context window.\n"
-                        "Use /compact to compress the conversation, or "
-                        "/reset to start fresh."
-                    )
-                elif status_code == 400:
-                    status_hint = " The request was rejected by the API."
-            return (
-                f"Sorry, I encountered an unexpected error.{status_hint}\n"
-                "Try again or use /reset to start a fresh session."
-            )
+                return (
+                    "小钢炮脑子装太满了，请用 /compact 压缩对话，"
+                    "或 /reset 重新开始～"
+                )
+            return "小钢炮出了点小问题，请稍后再试试吧～"
         finally:
             # Restore session context variables to their pre-handler state
             self._clear_session_env(_session_env_tokens)
