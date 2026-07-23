@@ -5396,6 +5396,21 @@ class AIAgent:
                 text = text.lstrip("\n")
         if not text:
             return
+        # Audit-stream buffering: when the independent auditor is gating
+        # the user-visible reply, hold the text instead of dispatching it
+        # immediately. ``_flush_audit_stream_buffer`` releases (or drops)
+        # the buffer once the auditor returns a verdict.
+        if getattr(self, "_audit_buffer_active", False):
+            try:
+                self._audit_pending_stream.append(text)
+            except Exception:
+                # Defensive: never drop content silently — fall back to
+                # the unbuffered path when the buffer attribute is in a
+                # bad state.
+                pass
+            else:
+                self._record_streamed_assistant_text(text)
+                return
         callbacks = [cb for cb in (self.stream_delta_callback, self._stream_callback) if cb is not None]
         delivered = False
         for cb in callbacks:
@@ -5406,6 +5421,88 @@ class AIAgent:
                 pass
         if delivered:
             self._record_streamed_assistant_text(text)
+
+    def _begin_audit_stream_buffering(self) -> None:
+        """Start holding streamed assistant text until the auditor decides.
+
+        Idempotent. Only takes effect when the audit subsystem is enabled
+        and the ``audit.audit_replies`` channel is on; otherwise the
+        buffer flag stays False and ``_fire_stream_delta`` behaves as
+        before.
+        """
+
+        try:
+            from agent import audit as _audit
+        except Exception:
+            self._audit_buffer_active = False
+            self._audit_pending_stream = []
+            return
+        cfg = _audit._load_audit_config()
+        if cfg.get("enabled", False) and cfg.get("audit_replies", True):
+            self._audit_buffer_active = True
+            self._audit_pending_stream = []
+        else:
+            self._audit_buffer_active = False
+            self._audit_pending_stream = []
+
+    def _flush_audit_stream_buffer(
+        self,
+        *,
+        blocked: bool,
+        replacement_text: str = "",
+    ) -> None:
+        """Release (or discard) text accumulated by audit-stream buffering.
+
+        Called after the final-response auditor returns.  When ``blocked``
+        is True, any buffered text is dropped and ``replacement_text`` is
+        sent through the stream callbacks instead so the user sees the
+        configured block notice.
+        """
+
+        if not getattr(self, "_audit_buffer_active", False):
+            return
+        try:
+            buffered = list(getattr(self, "_audit_pending_stream", []) or [])
+        except Exception:
+            buffered = []
+        # Flip the flag off BEFORE firing callbacks so the helper paths
+        # below don't re-enter the buffer.
+        self._audit_buffer_active = False
+        self._audit_pending_stream = []
+
+        if blocked:
+            if replacement_text:
+                self._dispatch_stream_callbacks(replacement_text)
+            return
+
+        for chunk in buffered:
+            if chunk:
+                self._dispatch_stream_callbacks(chunk)
+
+    def _dispatch_stream_callbacks(self, text: str) -> None:
+        """Send a single text chunk to the registered stream callbacks.
+
+        Mirrors the dispatch tail of ``_fire_stream_delta`` but skips the
+        scrubber/think-block work (the input text has already been
+        processed when buffered).
+        """
+
+        if not isinstance(text, str) or not text:
+            return
+        callbacks = [
+            cb
+            for cb in (self.stream_delta_callback, self._stream_callback)
+            if cb is not None
+        ]
+        for cb in callbacks:
+            try:
+                cb(text)
+            except Exception:
+                pass
+        try:
+            self._record_streamed_assistant_text(text)
+        except Exception:
+            pass
 
     def _fire_reasoning_delta(self, text: str) -> None:
         """Fire reasoning callback if registered."""

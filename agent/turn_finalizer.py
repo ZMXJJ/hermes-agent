@@ -450,6 +450,58 @@ def finalize_turn(
         except Exception as _exp_err:
             logger.debug("turn-completion explainer failed: %s", _exp_err)
 
+    # ── Independent-auditor final-response check ──────────────────────
+    # Runs after the tool-calling loop completes but BEFORE the response
+    # transform hooks, post_llm_call, and any UI flush.  When enabled with
+    # streaming output, ``_audit_buffer_active`` keeps the assistant text
+    # off the wire until we have a verdict — see ``_fire_stream_delta``
+    # and ``_flush_audit_stream_buffer`` on AIAgent.
+    _audit_blocked_response = False
+    try:
+        from agent import audit as _audit_mod
+    except Exception:
+        _audit_mod = None  # type: ignore[assignment]
+
+    if (
+        _audit_mod is not None
+        and final_response
+        and not interrupted
+        and _audit_mod.is_enabled()
+    ):
+        try:
+            _reply_verdict = _audit_mod.audit_final_response(
+                response_text=final_response,
+                session_id=agent.session_id or "",
+                user_message=getattr(
+                    agent, "_current_user_message", ""
+                ) or "",
+                conversation_tail=list(messages)[-12:],
+            )
+        except Exception as _audit_exc:
+            logger.warning("Final-response audit failed: %s", _audit_exc)
+            _reply_verdict = None
+
+        if _reply_verdict is not None and _reply_verdict.blocked:
+            # Replace the user-visible final response with the block
+            # message and drop any buffered streaming text.  The
+            # original assistant message stays in the conversation
+            # history for forensics, but we mark this turn as
+            # auditor-blocked in the returned result.
+            final_response = _audit_mod.get_block_message(_reply_verdict)
+            _audit_blocked_response = True
+
+    # Flush or drop any text that ``_fire_stream_delta`` held back
+    # while the auditor was deciding.
+    try:
+        agent._flush_audit_stream_buffer(
+            blocked=_audit_blocked_response,
+            replacement_text=(
+                final_response if _audit_blocked_response else ""
+            ),
+        )
+    except Exception as _flush_exc:
+        logger.debug("audit stream flush failed: %s", _flush_exc)
+
     _response_transformed = False
 
     # Plugin hook: transform_llm_output
@@ -494,6 +546,15 @@ def finalize_turn(
             )
         except Exception as exc:
             logger.warning("post_llm_call hook failed: %s", exc)
+
+    # Append AI-generated content disclaimer when configured.
+    if (
+        getattr(agent, "_ai_disclaimer", "")
+        and final_response
+        and not interrupted
+        and not _audit_blocked_response
+    ):
+        final_response = f"{final_response}\n\n{agent._ai_disclaimer}"
 
     # Extract reasoning from the CURRENT turn only.  Walk backwards
     # but stop at the user message that started this turn — anything
@@ -549,6 +610,8 @@ def finalize_turn(
     }
     if agent._tool_guardrail_halt_decision is not None:
         result["guardrail"] = agent._tool_guardrail_halt_decision.to_metadata()
+    if _audit_blocked_response:
+        result["audit_blocked"] = True
     # Surface any post-loop cleanup failures so the caller can distinguish a
     # clean turn from one whose trajectory/session/resource teardown raised
     # (the response is still returned either way — #8049).

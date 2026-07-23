@@ -1680,6 +1680,17 @@ def init_agent(
     except Exception:
         pass
 
+    # AI-generated content disclaimer appended to every final response.
+    _display_cfg = _agent_cfg.get("display", {}) if isinstance(_agent_cfg, dict) else {}
+    agent._ai_disclaimer = (_display_cfg.get("ai_disclaimer") or "") if isinstance(_display_cfg, dict) else ""
+
+    # Independent-auditor stream buffering state.  When the auditor gates
+    # user-visible replies, ``_fire_stream_delta`` holds text here until the
+    # final-response verdict lands.  ``run_conversation`` toggles
+    # ``_audit_buffer_active`` per turn.
+    agent._audit_buffer_active = False
+    agent._audit_pending_stream = []
+
     # Tool-use enforcement config: "auto" (default — matches hardcoded
     # model list), true (always), false (never), or list of substrings.
     _agent_section = _agent_cfg.get("agent", {})

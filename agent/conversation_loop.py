@@ -754,6 +754,27 @@ def run_conversation(
     # within one user turn, but must not suppress the same phrase next turn.
     agent._delivered_interim_texts = set()
 
+    # Keep the turn's user message reachable for helpers (independent
+    # auditor, etc.) that need conversational context without re-plumbing
+    # arguments through every callsite.
+    try:
+        agent._current_user_message = (
+            original_user_message
+            if isinstance(original_user_message, str)
+            else str(original_user_message or "")
+        )
+    except Exception:
+        agent._current_user_message = ""
+
+    # Independent-auditor stream buffering: hold any streamed reply
+    # text until the final-response auditor decides.  No-op when
+    # auditing or the ``audit_replies`` channel is disabled.
+    try:
+        agent._begin_audit_stream_buffering()
+    except Exception:
+        agent._audit_buffer_active = False
+        agent._audit_pending_stream = []
+
     # Main conversation loop counters (pure locals consumed by the loop below).
     api_call_count = 0
     final_response = None
