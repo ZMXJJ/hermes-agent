@@ -316,6 +316,7 @@ TOOLSETS = {
             "feishu_im_chat_search",
             "feishu_im_messages_search",
             "feishu_im_messages_get",
+            "feishu_im_thread_messages",
         ],
         "includes": []
     },
@@ -549,6 +550,7 @@ TOOLSETS = {
             "feishu_im_chat_search",
             "feishu_im_messages_search",
             "feishu_im_messages_get",
+            "feishu_im_thread_messages",
         ],
         "includes": []
     },

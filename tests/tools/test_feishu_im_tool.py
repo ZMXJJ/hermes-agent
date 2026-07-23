@@ -25,6 +25,7 @@ _EXPECTED_TOOLS = {
     "feishu_im_chat_search",
     "feishu_im_messages_search",
     "feishu_im_messages_get",
+    "feishu_im_thread_messages",
 }
 
 # Substrings that would indicate a write/mutating command leaked into the toolset.
@@ -92,11 +93,11 @@ def test_messages_get_requires_message_ids():
 # ---------------------------------------------------------------------------
 
 
-def test_chat_list_uses_user_identity_and_json(capture_run):
+def test_chat_list_uses_default_identity_and_json(capture_run):
     fim._handle_chat_list({})
     argv = capture_run["argv"]
     assert argv[:3] == ["lark-cli", "im", "+chat-list"]
-    assert "--as" in argv and argv[argv.index("--as") + 1] == "user"
+    assert "--as" in argv and argv[argv.index("--as") + 1] == fim._DEFAULT_IDENTITY
     assert "--format" in argv and argv[argv.index("--format") + 1] == "json"
     assert "--yes" not in argv
 
@@ -117,7 +118,7 @@ def test_no_handler_emits_write_verb(capture_run):
         for marker in _WRITE_MARKERS:
             assert marker not in verb, f"unexpected write verb {verb}"
         assert "--as" in capture_run["argv"]
-        assert capture_run["argv"][capture_run["argv"].index("--as") + 1] == "user"
+        assert capture_run["argv"][capture_run["argv"].index("--as") + 1] == fim._DEFAULT_IDENTITY
 
 
 def test_chat_messages_passes_filters(capture_run):

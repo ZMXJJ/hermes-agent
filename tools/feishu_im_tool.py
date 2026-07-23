@@ -1,29 +1,33 @@
 """Feishu/Lark IM read tools -- read chat messages via the local ``lark-cli``.
 
 These tools wrap the locally-installed ``lark-cli`` (the same binary backing
-the lark-* agent skills) with **user identity** (``--as user``) and expose a
-**read-only** surface only: list chats, read a chat's message history, search
-chats, search messages across chats, and batch-fetch messages by ID.
+the lark-* agent skills) and expose a **read-only** surface only: list chats,
+read a chat's message history, search chats, search messages across chats,
+batch-fetch messages by ID, and read thread messages.
 
 Design constraints (see plan "引入飞书 CLI 读取聊天页信息"):
 
 * Read-only by construction. We deliberately wrap only read shortcuts and
   never ``+messages-send`` / ``+messages-reply`` / ``+chat-create`` / etc., so
   the model has no tool that can send/modify anything on Feishu.
-* User identity. ``--as user`` is hard-coded on every invocation so the tools
-  can see every chat the authorizing user can see (not just bot-member chats),
-  and the user-only ``+messages-search`` works.
-* No credential management. ``lark-cli`` owns the OAuth user_access_token cache
-  and refresh; these tools never read or print secrets.
+* Identity defaults to **bot** (``--as bot``).  Bot identity uses
+  tenant_access_token which is auto-managed and doesn't expire, making it
+  ideal for unattended gateway deployments.  Set the ``LARK_CLI_IDENTITY``
+  env var to ``"user"`` to switch to user identity (requires a valid
+  user_access_token via ``lark-cli auth login``).
+  Note: ``+messages-search`` is user-only; when identity is ``bot`` that
+  tool will return an API error from lark-cli.
+* No credential management. ``lark-cli`` owns token caching and refresh;
+  these tools never read or print secrets.
 
-Prerequisite: ``lark-cli config init`` plus a one-time
-``lark-cli auth login --scope "im:message:readonly im:chat:read"``. When a
-permission/scope error comes back, the CLI's ``console_url`` / hint is passed
-through verbatim so the caller can fix authorization.
+Prerequisite: ``lark-cli config init``.  For bot identity no further auth
+is needed.  For user identity, also run
+``lark-cli auth login --scope "im:message:readonly im:chat:read"``.
 """
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 
@@ -32,6 +36,9 @@ from tools.registry import registry, tool_error, tool_result
 logger = logging.getLogger(__name__)
 
 _LARK_CLI = "lark-cli"
+_DEFAULT_IDENTITY = os.environ.get("LARK_CLI_IDENTITY", "bot").strip().lower()
+if _DEFAULT_IDENTITY not in ("bot", "user"):
+    _DEFAULT_IDENTITY = "bot"
 # Generous timeout: ``+messages-search --page-all`` can walk up to 40 pages.
 _DEFAULT_TIMEOUT = 180
 
@@ -58,8 +65,11 @@ def _append_bool(args: list, flag: str, value) -> None:
         args.append(flag)
 
 
-def _run_lark_im(verb: str, extra_args: list) -> str:
-    """Run ``lark-cli im <verb> --as user --format json [extra]`` (read-only).
+def _run_lark_im(verb: str, extra_args: list, *, identity: str = "") -> str:
+    """Run ``lark-cli im <verb> --as <identity> --format json [extra]`` (read-only).
+
+    *identity* defaults to ``_DEFAULT_IDENTITY`` (env ``LARK_CLI_IDENTITY``,
+    falls back to ``"bot"``).
 
     Returns a JSON string suitable for a tool result. On any failure the
     ``lark-cli`` stderr/stdout (which may carry a structured error envelope
@@ -67,11 +77,11 @@ def _run_lark_im(verb: str, extra_args: list) -> str:
     """
     if not _check_lark_cli():
         return tool_error(
-            "lark-cli not found on PATH. Install it and run `lark-cli config init` "
-            "plus `lark-cli auth login --scope \"im:message:readonly im:chat:read\"`."
+            "lark-cli not found on PATH. Install it and run `lark-cli config init`."
         )
 
-    argv = [_LARK_CLI, "im", verb, "--as", "user", "--format", "json", *extra_args]
+    as_identity = identity if identity in ("bot", "user") else _DEFAULT_IDENTITY
+    argv = [_LARK_CLI, "im", verb, "--as", as_identity, "--format", "json", *extra_args]
 
     try:
         proc = subprocess.run(
@@ -412,6 +422,57 @@ def _handle_messages_get(args: dict, **kwargs) -> str:
 
 
 # ---------------------------------------------------------------------------
+# feishu_im_thread_messages
+# ---------------------------------------------------------------------------
+
+FEISHU_IM_THREAD_MESSAGES_SCHEMA = {
+    "name": "feishu_im_thread_messages",
+    "description": (
+        "Read all messages in a Feishu/Lark thread/topic (read-only). Use this to "
+        "retrieve the full conversation history of a topic-group thread when you "
+        "only have the thread_id (omt_xxx) or a message_id (om_xxx) from within "
+        "the thread. Supports pagination; when has_more is true, pass page_token "
+        "to continue."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "thread": {
+                "type": "string",
+                "description": "Thread ID (omt_xxx) or any message ID (om_xxx) within the thread. The underlying command auto-resolves message IDs to their thread.",
+            },
+            "order": {
+                "type": "string",
+                "enum": ["asc", "desc"],
+                "description": "Sort order by creation time (default asc).",
+            },
+            "page_size": {
+                "type": "integer",
+                "description": "Results per page (1-500, default 50).",
+            },
+            "page_token": {
+                "type": "string",
+                "description": "Pagination token from a previous response.",
+            },
+        },
+        "required": ["thread"],
+    },
+}
+
+
+def _handle_thread_messages(args: dict, **kwargs) -> str:
+    thread = (args.get("thread") or "").strip()
+    if not thread:
+        return tool_error("thread is required (omt_xxx or om_xxx)")
+
+    extra: list = ["--thread", thread]
+    _append(extra, "--order", args.get("order"))
+    _append(extra, "--page-size", args.get("page_size"))
+    _append(extra, "--page-token", args.get("page_token"))
+    return _run_lark_im("+threads-messages-list", extra)
+
+
+# ---------------------------------------------------------------------------
 # Registration (read-only tools only)
 # ---------------------------------------------------------------------------
 
@@ -475,4 +536,16 @@ registry.register(
     is_async=False,
     description="Batch fetch Feishu/Lark messages by ID (read-only)",
     emoji="\U0001f4ac",
+)
+
+registry.register(
+    name="feishu_im_thread_messages",
+    toolset=_TOOLSET,
+    schema=FEISHU_IM_THREAD_MESSAGES_SCHEMA,
+    handler=_handle_thread_messages,
+    check_fn=_check_lark_cli,
+    requires_env=[],
+    is_async=False,
+    description="Read Feishu/Lark thread messages (read-only)",
+    emoji="\U0001f9f5",
 )
