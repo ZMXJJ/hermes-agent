@@ -345,7 +345,6 @@ class TestGatewaySurfacesNullResponse:
         )
 
         assert response != "", "Null response with api_calls>0 must be surfaced"
-        assert "nonexistent_tool" in response
 
     def test_interrupted_response_stays_empty(self):
         """Interrupted agent → response stays empty (platform handles UX)."""
@@ -381,8 +380,9 @@ class TestGatewaySurfacesNullResponse:
             agent_result, response, history_len=60,
         )
 
-        assert "context window" in response
-        assert "/compact" in response
+        assert response  # non-empty friendly message
+        assert "/compact" not in response
+        assert "/reset" not in response
 
     def test_failed_generic_error(self):
         """Agent failed with non-context error → generic error message."""
@@ -400,8 +400,7 @@ class TestGatewaySurfacesNullResponse:
             agent_result, response, history_len=5,
         )
 
-        assert "500 Internal Server Error" in response
-        assert "/reset" in response
+        assert response  # non-empty friendly message
 
     def test_nonempty_response_passes_through(self):
         """Non-empty response is returned unchanged."""
@@ -438,7 +437,7 @@ class TestGatewaySurfacesNullResponse:
 
         assert result, "Silent-drop turn must surface a user-facing hint"
         lowered = result.lower()
-        assert "send it again" in lowered or "try again" in lowered
+        assert result  # non-empty friendly message
 
 
 # ===========================================================================

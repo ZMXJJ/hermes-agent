@@ -263,7 +263,7 @@ async def test_send_home_channel_startup_notification_to_configured_home(tmp_pat
     assert delivered == {("telegram", "home-42", None)}
     adapter.send.assert_called_once_with(
         "home-42",
-        "♻️ Gateway online — Hermes is back and ready.",
+        "小钢炮重启完成，刚才聊到哪儿了来着？",
     )
 
 
@@ -297,7 +297,7 @@ async def test_send_home_channel_startup_notification_preserves_thread_metadata(
     assert delivered == {("telegram", "parent-42", "777")}
     adapter.send.assert_called_once_with(
         "parent-42",
-        "♻️ Gateway online — Hermes is back and ready.",
+        "小钢炮重启完成，刚才聊到哪儿了来着？",
         metadata={
             "thread_id": "777",
             "telegram_dm_topic_reply_fallback": True,
@@ -393,7 +393,7 @@ async def test_send_restart_notification_delivers_and_cleans_up(tmp_path, monkey
     adapter.send.assert_called_once()
     call_args = adapter.send.call_args
     assert call_args[0][0] == "42"  # chat_id
-    assert "restarted" in call_args[0][1].lower()
+    assert call_args[0][1]  # non-empty friendly message
     assert call_args[1].get("metadata") is None  # no thread
     assert not notify_path.exists()
 

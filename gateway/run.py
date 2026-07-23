@@ -2911,58 +2911,28 @@ def _normalize_empty_agent_response(
             for p in ("context", "token", "too large", "too long", "exceed", "payload")
         ) or ("400" in error_str and history_len > 50)
         if is_context_failure:
-            return (
-                "⚠️ Session too large for the model's context window.\n"
-                "Use /compact to compress the conversation, or "
-                "/reset to start fresh."
-            )
-        return (
-            f"The request failed: {str(error_detail)[:300]}\n"
-            "Try again or use /reset to start a fresh session."
-        )
+            return "小钢炮脑子状态满了，请一会儿再试试吧"
+        return "小钢炮出了点小问题，请稍后再试试吧～"
 
     api_calls = int(agent_result.get("api_calls", 0) or 0)
     if agent_result.get("interrupted"):
-        # An interrupted run that did work (api_calls > 0) is the drain of a
-        # run the user deliberately stopped or steered — its silence is
-        # intentional, and any queued/interrupting message is delivered by
-        # the recursive drain inside _run_agent before this result is seen.
-        # An interrupted run with ZERO api_calls never processed the user's
-        # message at all: it was killed at the top of the tool loop by an
-        # interrupt flag left over from a recent /stop (#44212).  Pure
-        # silence there swallows a real user message, so surface it.
         if api_calls == 0:
-            return (
-                "⚠️ Your message was interrupted before processing started "
-                "(likely by a recent /stop). Please send it again."
-            )
+            return "小钢炮没来得及处理您的消息，请再发一次吧～"
         return response
     if api_calls > 0:
         if _is_gateway_hidden_reasoning_incomplete_turn(agent_result):
             return ""
         if agent_result.get("partial"):
-            err = agent_result.get("error", "processing incomplete")
-            return f"⚠️ Processing stopped: {str(err)[:200]}. Try again."
-        return (
-            "⚠️ Processing completed but no response was generated. "
-            "This may be a transient error — try sending your message again."
-        )
+            return "小钢炮处理到一半出了点问题，请稍后再试试吧～"
+        return "小钢炮想了半天没想出来，换个方式再问问试试？"
 
-    # api_calls == 0, not failed, not interrupted: the agent never ran for
-    # this turn. This is the post-/stop generation-race pattern where the
-    # gateway would otherwise silently drop the turn (response=0 chars) and
-    # the user sees no reply at all. Surface a short retry hint so the
-    # message isn't lost in silence. (#31884)
     if (
         api_calls == 0
         and not agent_result.get("interrupted")
         and not agent_result.get("failed")
         and not agent_result.get("partial")
     ):
-        return (
-            "⚠️ Your message wasn't processed (the previous turn was still "
-            "being cleaned up). Please send it again."
-        )
+        return "小钢炮没来得及处理您的消息，请再发一次吧～"
 
     return response
 
@@ -13049,13 +13019,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                         # reaches gateway users directly.
                                         from agent.redact import redact_sensitive_text
                                         _err = redact_sensitive_text(_err, force=True)
-                                        _warn_msg = (
-                                            "⚠️ Context compression aborted "
-                                            f"({_err}). No messages were dropped — "
-                                            "conversation is unchanged. Run /compress "
-                                            "to retry, /reset for a clean session, or "
-                                            "check your auxiliary.compression model "
-                                            "configuration."
+                                        _warn_msg = "小钢炮脑子状态满了，请一会儿再试试吧"
+                                        logger.warning(
+                                            "Context compression aborted (%s) — notifying user",
+                                            _err,
                                         )
                                         try:
                                             _adapter = self._adapter_for_source(source)
@@ -13075,16 +13042,15 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                     elif _comp is not None and getattr(_comp, "_last_aux_model_failure_model", None):
                                         _aux_model = getattr(_comp, "_last_aux_model_failure_model", "")
                                         _aux_err = getattr(_comp, "_last_aux_model_failure_error", None) or "unknown error"
-                                        _aux_msg = (
-                                            f"ℹ️ Configured compression model `{_aux_model}` "
-                                            f"failed ({_aux_err}). Recovered using your main "
-                                            "model — context is intact — but you may want to "
-                                            "check `auxiliary.compression.model` in config.yaml."
+                                        _warn_msg = "小钢炮脑子状态满了，请一会儿再试试吧"
+                                        logger.warning(
+                                            "Aux model compression aborted (%s) — notifying user",
+                                            _aux_err,
                                         )
                                         try:
                                             _adapter = self._adapter_for_source(source)
                                             if _adapter and source.chat_id:
-                                                await _adapter.send(source.chat_id, _aux_msg, metadata=_hyg_meta)
+                                                await _adapter.send(source.chat_id, _warn_msg, metadata=_hyg_meta)
                                         except Exception as _werr:
                                             logger.warning(
                                                 "Failed to deliver aux-model-fallback notice to user: %s",
@@ -16626,7 +16592,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             )
             result = await adapter.send(
                 str(chat_id),
-                "♻ Gateway restarted successfully. Your session continues.",
+        "♻ 小钢炮重启完成，刚才聊到哪儿了来着？",
                 metadata=_non_conversational_metadata(metadata, platform=platform),
             )
             # adapter.send() catches provider errors (e.g. "Chat not found")
@@ -16667,7 +16633,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         """
         delivered: set[tuple[str, str, Optional[str]]] = set()
         skipped = skip_targets or set()
-        message = "♻️ Gateway online — Hermes is back and ready."
+        message = "小钢炮重启完成，刚才聊到哪儿了来着？"
 
         for platform, adapter in self.adapters.items():
             home = self.config.get_home_channel(platform)
