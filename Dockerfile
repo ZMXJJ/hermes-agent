@@ -108,6 +108,11 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && 
     ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
     ln -sf /usr/local/lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack
 
+# Install Feishu/Lark CLI for IM read tools (feishu_im_* toolset).
+# Placed after the node/npm COPY above — npm comes from the node_source
+# stage, not apt, so it is not on PATH any earlier in this Dockerfile.
+RUN npm install -g @larksuite/cli && npm cache clean --force
+
 WORKDIR /opt/hermes
 
 # ---------- Layer-cached dependency install ----------
